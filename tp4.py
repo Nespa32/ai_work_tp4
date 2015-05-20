@@ -1,6 +1,8 @@
 
 import math # for math.log
 import csv # for csv file reading
+import sys # for argument fetching
+import StringIO # some function needs a file but you only have a string? this is for you
 from sets import Set
 
 # for deep copy
@@ -9,15 +11,14 @@ import copy
 def DecisionTreeLearning(examples, attributes, parent_examples=[]):
     if len(examples) == 0:
         return PluralityValue(parent_examples)
-    # check if all examples have the same classification
-    elif all(ex['Classification'] == examples[0]['Classification'] for ex in examples):
-        return examples[0]['Classification'] + " " + str(len(examples))
+    elif all(ex[-1] == examples[0][-1] for ex in examples):
+        return examples[0][-1] + " " + str(len(examples))
     elif len(attributes) == 0:
         return PluralityValue(examples)
 
     # choose the most important attribute
     a = []
-    m = 0
+    m = -1
     for key in attributes:
         x = Importance(attributes[key], examples)
         if x > m:
@@ -30,7 +31,7 @@ def DecisionTreeLearning(examples, attributes, parent_examples=[]):
     
     # for potential values of A
     for vk in a['Values']:
-        exs = [e for e in examples if e[a['Name']] == vk]
+        exs = [e for e in examples if e[a['Index']] == vk]
         attributes_diff = copy.copy(attributes) # equivalent to attributes - a
         del attributes_diff[a['Name']]
         subtree = DecisionTreeLearning(exs, attributes_diff, examples)
@@ -43,9 +44,9 @@ def PluralityValue(examples):
     values = { }
     for ex in examples:
         try:
-            values[ex['Classification']] = values[ex['Classification']] + 1
+            values[ex[-1]] = values[ex[-1]] + 1
         except KeyError:
-            values[ex['Classification']] = 1
+            values[ex[-1]] = 1
 
     (v, m) = ('', 0)
     for val in values:
@@ -54,9 +55,11 @@ def PluralityValue(examples):
     
     return v
 
-# something about entropy
 def Importance(a, examples):
-    p = float(len([e for e in examples if e['Classification'] == 'Yes']))
+    #for vk in a['Values']:
+    
+    # todo
+    p = float(len([e for e in examples if e[-1] == 'Yes' or e[-1] == 'yes']))
     n = float(len(examples) - p)
     return B(p / (p + n)) - Remainder(a, examples)
 
@@ -71,15 +74,58 @@ def Remainder(a, examples):
     # attribute a has d different value divides
     # each value divide will divide the examples into partitions
     # pk are positive examples for that value divide, nk are negative examples
-    s = 0
-    p = float(len([e for e in examples if e['Classification'] == 'Yes']))
+    s = 1
+    p = float(len([e for e in examples if e[-1] == 'Yes' or e[-1] == 'yes']))
     n = float(len(examples) - p)
 
+    x = [v.isdigit() for v in a['Values']]
+    if all(x):
+        values = sorted([int(v) for v in a['Values']])
+        truV = 0 # should it really have a initial value
+        for v in values:
+            (pk, nk) = (0.0, 0.0)
+            x = 0.0
+            for e in examples:
+                if int(e[a['Index']]) > v:
+                    if e[-1] == 'Yes' or e[-1] == 'yes':
+                        pk += 1
+                    else:
+                        nk += 1
+
+            if pk != 0.0 or nk != 0.0:
+                x += (pk + nk) / (p + n) * B(pk / (pk + nk))
+                
+            (pk, nk) = (0.0, 0.0)
+            for e in examples:
+                if int(e[a['Index']]) <= v:
+                    if e[-1] == 'Yes' or e[-1] == 'yes':
+                        pk += 1
+                    else:
+                        nk += 1
+
+            if pk != 0.0 or nk != 0.0:
+                x += (pk + nk) / (p + n) * B(pk / (pk + nk))
+                
+            if x < s:
+                s = x
+                truV = v
+
+        for e in examples:
+            if int(e[a['Index']]) > truV:
+                x = ">" + str(truV)
+                e[a['Index']] = x
+            else:
+                x = "<" + str(truV)
+                e[a['Index']] = x
+
+        a['Values'] = [">" + str(truV), "<" + str(truV)]
+        return s
+        
     for vk in a['Values']:
         (pk, nk) = (0.0, 0.0)
         for e in examples:
-            if e[a['Name']] == vk:
-                if e['Classification'] == 'Yes':
+            if e[a['Index']] == vk:
+                if e[-1] == 'Yes' or e[-1] == 'yes':
                     pk += 1
                 else:
                     nk += 1
@@ -89,10 +135,10 @@ def Remainder(a, examples):
 
     return s
 
-def GetValuesForField(field, examples):
+def GetValuesForFieldIndex(fieldIndex, examples):
     s = Set()
     for e in examples:
-        s.add(e[field])
+        s.add(e[fieldIndex])
         
     return list(s)
 
@@ -106,41 +152,41 @@ def PrintTree(tree, depth):
         else:
             print "  " * depth + "  " + vk + ":"
             PrintTree(subtree, depth + 2)
+
+if len(sys.argv) < 2:
+    print "Missing file arg"
+    print "Usage: python tp4.py $csvfile"
+    sys.exit(1)
+
+fileStr = sys.argv[1]
+with open(fileStr, 'rb') as csvfile:
+    firstLine = csvfile.readline() # skip first line
+    rest = csvfile.read() # read the rest of the file
     
+    header_reader = csv.reader(StringIO.StringIO(firstLine), skipinitialspace=True)
+    for header in header_reader:
+        fields = header
+
+    # let's check if the csv format is by spaces or by commas
+    delimit = ',' if ',' in rest else ' '
+    spamreader = csv.reader(StringIO.StringIO(rest), delimiter=delimit, skipinitialspace=True)
     
-with open('restaurant.csv', 'rb') as csvfile:
-    # hardcoded fields to guide in code
-    # last field is 'WillWait' in the csv instead of Classification, but we need a default for the decision tree algorithm
-    fields = ['ID', 'Alt', 'Bar', 'Fri', 'Hun', 'Pat', 'Price', 'Rain', 'Res', 'Type', 'Est', 'Classification']
-    # spamreader = csv.reader(csvfile, delimiter=' ', skipinitialspace=True)
-    spamreader = csv.DictReader(csvfile, delimiter=' ', skipinitialspace=True, fieldnames=fields)
-    
-    # print spamreader.rows
-    # positive examples have row['WillWait'] = Yes
     examples = []
-    
-    # skip the first iteration with the header values
-    itr = iter(spamreader)
-    next(itr)
-    for row in itr:
+    for row in spamreader:
         examples.append(row)
-        # print row['WillWait']
-        # print row
-        # print ', '.join(row)
-        
+
     attributes =  { }
-    # ['ID', 'Alt', 'Bar', 'Fri', 'Hun', 'Pat', 'Price', 'Rain', 'Res', 'Type', 'Est', 'Classification']
-    for f in fields:
-        if f == 'ID' or f == 'Classification':
+    for i in range(len(fields)):
+        f = fields[i]
+        # skip ID field and classification field (which should be always the last)
+        if f == 'ID' or f == fields[-1]:
             continue
         
         attributes[f] = { }
+        attributes[f]['Index'] = i
         attributes[f]['Name'] = f
-        attributes[f]['Values'] = GetValuesForField(f, examples)
-        # print attributes[f]
+        attributes[f]['Values'] = GetValuesForFieldIndex(i, examples)
 
     tree = DecisionTreeLearning(examples, attributes)
     
     PrintTree(tree, 0)
-    # print tree
-        
