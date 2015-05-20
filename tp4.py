@@ -4,11 +4,9 @@ import csv # for csv file reading
 import sys # for argument fetching
 import StringIO # some function needs a file but you only have a string? this is for you
 from sets import Set
+import copy # for deep copy
 
-# for deep copy
-import copy
-
-def DecisionTreeLearning(examples, attributes, parent_examples=[]):
+def DecisionTreeLearning(examples, attributes, parent_examples, goalValues):
     if len(examples) == 0:
         return PluralityValue(parent_examples)
     elif all(ex[-1] == examples[0][-1] for ex in examples):
@@ -17,26 +15,35 @@ def DecisionTreeLearning(examples, attributes, parent_examples=[]):
         return PluralityValue(examples)
 
     # choose the most important attribute
-    a = []
-    m = -1
-    for key in attributes:
-        x = Importance(attributes[key], examples)
-        if x > m:
-            m = x
-            a = attributes[key]
+    max_info_gain = 0
+    for attr in attributes:
+        at = copy.deepcopy(attr) # attribute can be changed by Importance, due to numeric value split check
+        info_gain = Importance(at, examples)
+        if info_gain > max_info_gain:
+            (max_info_gain, a) = (info_gain, at)
         
+    if 'Numeric' in a:
+        for e in examples:
+            if float(e[a['Index']]) > a['Numeric']:
+                e[a['Index']] = ">" + str(a['Numeric'])
+            else:
+                e[a['Index']] = "<" + str(a['Numeric'])
+
+        # change the attributes' values to our new discrete type
+        a['Values'] = [">" + str(a['Numeric']), "<" + str(a['Numeric'])]
+    
     tree = { } # must have root test A
     tree['Attribute'] = a['Name']
     tree['Values'] = []
     
-    # for potential values of A
-    for vk in a['Values']:
-        exs = [e for e in examples if e[a['Index']] == vk]
-        attributes_diff = copy.copy(attributes) # equivalent to attributes - a
-        del attributes_diff[a['Name']]
-        subtree = DecisionTreeLearning(exs, attributes_diff, examples)
-        tree['Values'].append((vk, subtree)) # adds branch to tree with label(a = vk)
-
+    # for potential values of our attribute
+    for v in a['Values']:
+        examples_for_value = [e for e in examples if e[a['Index']] == v]
+        # equivalent to attributes - a
+        other_attributes = [attr for attr in attributes if attr['Name'] != a['Name']]
+        subtree = DecisionTreeLearning(examples_for_value, other_attributes, examples, goalValues)
+        tree['Values'].append((v, subtree)) # adds branch to tree with label(a = v)
+    
     return tree
 
 # returns most common output value among a set of examples
@@ -55,92 +62,81 @@ def PluralityValue(examples):
     
     return v
 
+# returns the importance of an attribute for information on the examples
+# value between 0 and 1
+# can change attribute a due to numeric value split check
 def Importance(a, examples):
-    #for vk in a['Values']:
-    
-    # todo
-    p = float(len([e for e in examples if e[-1] == 'Yes' or e[-1] == 'yes']))
-    n = float(len(examples) - p)
-    return B(p / (p + n)) - Remainder(a, examples)
+    return GetEntropyForExamples(examples) - GetRemainderEntropy(a, examples)
 
-# entropy of a Boolean random variable that is true with probability q
-def B(q):
-    if q == 0.0 or q == 1.0:
+# takes in examples, checks the probability for each possible goal value, gives us the entropy
+# value between 0 and 1
+def GetEntropyForExamples(examples):
+    l = float(len(examples))
+    if l == 0.0:
         return 0.0
 
-    return -(q * math.log(q, 2) + (1 - q) * math.log(1 - q, 2))
+    en = 0.0
+    values = GetValuesForFieldIndex(len(examples[0]) - 1,  examples)
+    for v in values:
+        pv = sum([1 for e in examples if e[-1] == v]) / l # can never be 0 since at least one entry has to exist for this value
+        en += -(pv * math.log(pv))
+            
+    return en
 
-def Remainder(a, examples):
-    # attribute a has d different value divides
-    # each value divide will divide the examples into partitions
-    # pk are positive examples for that value divide, nk are negative examples
-    s = 1
-    p = float(len([e for e in examples if e[-1] == 'Yes' or e[-1] == 'yes']))
-    n = float(len(examples) - p)
-
-    x = [v.isdigit() for v in a['Values']]
-    if all(x):
-        values = sorted([int(v) for v in a['Values']])
-        truV = 0 # should it really have a initial value
+def IsFloatString(value):
+  try:
+    float(value)
+    return True
+  except ValueError:
+    return False
+    
+# takes in an attribute and an example list, checks how much entropy there would be splitting by attribute
+# if attribute values are numeric, a split point will be found
+# can change attribute a due to numeric value split check
+def GetRemainderEntropy(a, examples):
+    # is it an attribute where all values are integers?
+    # if yes, let's try to find the best split point
+    if all([IsFloatString(v) for v in a['Values']]):
+        values = sorted([float(v) for v in a['Values']])
+        bestEn = 1
         for v in values:
-            (pk, nk) = (0.0, 0.0)
-            x = 0.0
-            for e in examples:
-                if int(e[a['Index']]) > v:
-                    if e[-1] == 'Yes' or e[-1] == 'yes':
-                        pk += 1
-                    else:
-                        nk += 1
-
-            if pk != 0.0 or nk != 0.0:
-                x += (pk + nk) / (p + n) * B(pk / (pk + nk))
-                
-            (pk, nk) = (0.0, 0.0)
-            for e in examples:
-                if int(e[a['Index']]) <= v:
-                    if e[-1] == 'Yes' or e[-1] == 'yes':
-                        pk += 1
-                    else:
-                        nk += 1
-
-            if pk != 0.0 or nk != 0.0:
-                x += (pk + nk) / (p + n) * B(pk / (pk + nk))
-                
-            if x < s:
-                s = x
-                truV = v
-
-        for e in examples:
-            if int(e[a['Index']]) > truV:
-                x = ">" + str(truV)
-                e[a['Index']] = x
-            else:
-                x = "<" + str(truV)
-                e[a['Index']] = x
-
-        a['Values'] = [">" + str(truV), "<" + str(truV)]
-        return s
-        
-    for vk in a['Values']:
-        (pk, nk) = (0.0, 0.0)
-        for e in examples:
-            if e[a['Index']] == vk:
-                if e[-1] == 'Yes' or e[-1] == 'yes':
-                    pk += 1
+            # need new copy, don't want to wreck the original examples
+            examples_copy = copy.deepcopy(examples)
+            attr = copy.deepcopy(a)
+            idx = attr['Index']
+            
+            for e in examples_copy:
+                if float(e[idx]) > v:
+                    e[idx] = ">" + str(v)
                 else:
-                    nk += 1
+                    e[idx] = "<" + str(v)
 
-        if pk != 0.0 or nk != 0.0:
-            s += (pk + nk) / (p + n) * B(pk / (pk + nk))
-
-    return s
-
-def GetValuesForFieldIndex(fieldIndex, examples):
-    s = Set()
-    for e in examples:
-        s.add(e[fieldIndex])
+            attr['Values'] = [">" + str(v), "<" + str(v)]
         
-    return list(s)
+            en = 0.0
+            # handle attributes with discrete values
+            for vk in attr['Values']:
+                relevantExamples = [e for e in examples_copy if e[idx] == vk]
+                en += len(relevantExamples) / float(len(examples_copy)) * GetEntropyForExamples(relevantExamples)
+                
+            if en < bestEn:
+                (bestEn, bestSplitValue) = (en, v)
+        
+        # inform the caller that this attribute can be split with this value
+        a['Numeric'] = bestSplitValue
+        return bestEn
+        
+    # handle attributes with discrete values
+    en = 0.0
+    for vk in a['Values']:
+        relevantExamples = [e for e in examples if e[a['Index']] == vk]
+        en += len(relevantExamples) / float(len(examples)) * GetEntropyForExamples(relevantExamples)
+
+    return en
+
+# returns unique values the field/attribute can have
+def GetValuesForFieldIndex(field_index, examples):
+    return list(Set([e[field_index] for e in examples]))
 
 def PrintTree(tree, depth):
     attr = tree['Attribute']
@@ -161,6 +157,11 @@ if len(sys.argv) < 2:
 fileStr = sys.argv[1]
 with open(fileStr, 'rb') as csvfile:
     firstLine = csvfile.readline() # skip first line
+    # some of the csv files have empty lines/comment lines that start with %
+    # skip those
+    while firstLine.isspace() or firstLine.startswith("%"):
+        firstLine = csvfile.readline()
+
     rest = csvfile.read() # read the rest of the file
     
     header_reader = csv.reader(StringIO.StringIO(firstLine), skipinitialspace=True)
@@ -175,18 +176,21 @@ with open(fileStr, 'rb') as csvfile:
     for row in spamreader:
         examples.append(row)
 
-    attributes =  { }
+    attributes = []
     for i in range(len(fields)):
         f = fields[i]
-        # skip ID field and classification field (which should be always the last)
-        if f == 'ID' or f == fields[-1]:
+        if f == 'ID': # skip ID field
+            continue
+        elif f == fields[-1]: # skip classification field (which should be always the last)
+            goalValues = GetValuesForFieldIndex(i, examples) # fill discrete goal values (can be yes/no, can be more)
             continue
         
-        attributes[f] = { }
-        attributes[f]['Index'] = i
-        attributes[f]['Name'] = f
-        attributes[f]['Values'] = GetValuesForFieldIndex(i, examples)
+        attribute = { }
+        attribute['Index'] = i
+        attribute['Name'] = f
+        attribute['Values'] = GetValuesForFieldIndex(i, examples)
+        attributes.append(attribute)
 
-    tree = DecisionTreeLearning(examples, attributes)
+    tree = DecisionTreeLearning(examples, attributes, [], goalValues)
     
     PrintTree(tree, 0)
