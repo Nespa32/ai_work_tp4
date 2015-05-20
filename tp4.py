@@ -6,6 +6,61 @@ import StringIO # some function needs a file but you only have a string? this is
 from sets import Set
 import copy # for deep copy
 
+def main():
+    # need to take in a csv file, let's see if it's given to us
+    if len(sys.argv) < 2:
+        print "Missing file arg"
+        print "Usage: python tp4.py $csvfile"
+        sys.exit(1)
+
+    fileStr = sys.argv[1]
+    with open(fileStr, 'rb') as csvfile: # file exists, let's parse it
+        firstLine = csvfile.readline() # skip first line
+        # some of the csv files have empty lines/comment lines that start with %
+        # skip those
+        while firstLine.isspace() or firstLine.startswith("%"):
+            firstLine = csvfile.readline()
+
+        rest = csvfile.read() # read the rest of the file
+        
+        # let's parse the header in the first line, which has the fields
+        header_reader = csv.reader(StringIO.StringIO(firstLine), skipinitialspace=True)
+        for header in header_reader:
+            fields = header
+
+        # let's check if the csv format is by spaces or by commas
+        # because following a single format is too hard for everyone
+        delimit = ',' if ',' in rest else ' '
+        spamreader = csv.reader(StringIO.StringIO(rest), delimiter=delimit, skipinitialspace=True)
+        
+        # assemble the test cases
+        examples = []
+        for row in spamreader:
+            examples.append(row)
+
+        # assemble the attributes, they're the header fields
+        attributes = []
+        for i in range(len(fields)):
+            f = fields[i]
+            if f == 'ID': # skip ID field, unique value per row <no bueno> for pattern finding
+                continue
+            elif f == fields[-1]: # skip goal field (which should be always the last)
+                goalValues = GetValuesForFieldIndex(i, examples) # fill discrete goal values (can be yes/no, can be more)
+                continue
+            
+            attribute = { }
+            attribute['Index'] = i
+            attribute['Name'] = f
+            attribute['Values'] = GetValuesForFieldIndex(i, examples)
+            attributes.append(attribute)
+
+        # let's do some magic and construct the decision tree
+        tree = DecisionTreeLearning(examples, attributes, [], goalValues)
+        
+        # woah, magic
+        # let's print the tree
+        PrintTree(tree)
+    
 def DecisionTreeLearning(examples, attributes, parent_examples, goalValues):
     if len(examples) == 0:
         return PluralityValue(parent_examples)
@@ -138,7 +193,7 @@ def GetRemainderEntropy(a, examples):
 def GetValuesForFieldIndex(field_index, examples):
     return list(Set([e[field_index] for e in examples]))
 
-def PrintTree(tree, depth):
+def PrintTree(tree, depth=0):
     attr = tree['Attribute']
     list = tree['Values']
     print "  " * depth + "<" + attr + ">"
@@ -149,48 +204,5 @@ def PrintTree(tree, depth):
             print "  " * depth + "  " + vk + ":"
             PrintTree(subtree, depth + 2)
 
-if len(sys.argv) < 2:
-    print "Missing file arg"
-    print "Usage: python tp4.py $csvfile"
-    sys.exit(1)
-
-fileStr = sys.argv[1]
-with open(fileStr, 'rb') as csvfile:
-    firstLine = csvfile.readline() # skip first line
-    # some of the csv files have empty lines/comment lines that start with %
-    # skip those
-    while firstLine.isspace() or firstLine.startswith("%"):
-        firstLine = csvfile.readline()
-
-    rest = csvfile.read() # read the rest of the file
-    
-    header_reader = csv.reader(StringIO.StringIO(firstLine), skipinitialspace=True)
-    for header in header_reader:
-        fields = header
-
-    # let's check if the csv format is by spaces or by commas
-    delimit = ',' if ',' in rest else ' '
-    spamreader = csv.reader(StringIO.StringIO(rest), delimiter=delimit, skipinitialspace=True)
-    
-    examples = []
-    for row in spamreader:
-        examples.append(row)
-
-    attributes = []
-    for i in range(len(fields)):
-        f = fields[i]
-        if f == 'ID': # skip ID field
-            continue
-        elif f == fields[-1]: # skip classification field (which should be always the last)
-            goalValues = GetValuesForFieldIndex(i, examples) # fill discrete goal values (can be yes/no, can be more)
-            continue
-        
-        attribute = { }
-        attribute['Index'] = i
-        attribute['Name'] = f
-        attribute['Values'] = GetValuesForFieldIndex(i, examples)
-        attributes.append(attribute)
-
-    tree = DecisionTreeLearning(examples, attributes, [], goalValues)
-    
-    PrintTree(tree, 0)
+if __name__ == "__main__":
+    main()
