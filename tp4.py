@@ -63,11 +63,11 @@ def main():
     
 def DecisionTreeLearning(examples, attributes, parent_examples, goalValues):
     if len(examples) == 0:
-        return PluralityValue(parent_examples)
+        return PluralityValue(parent_examples) + " (0)"
     elif all(ex[-1] == examples[0][-1] for ex in examples):
-        return examples[0][-1] + " " + str(len(examples))
+        return examples[0][-1] + " (" + str(len(examples)) + ")"
     elif len(attributes) == 0:
-        return PluralityValue(examples)
+        return PluralityValue(examples) + " (No more attributes to distinguish) (" + str(len(examples)) + ")"
 
     # choose the most important attribute
     max_info_gain = 0
@@ -77,6 +77,7 @@ def DecisionTreeLearning(examples, attributes, parent_examples, goalValues):
         if info_gain > max_info_gain:
             (max_info_gain, a) = (info_gain, at)
         
+    # turns out the best attribute is a numeric one, let's update the examples and attribute values
     if 'Numeric' in a:
         for e in examples:
             if float(e[a['Index']]) > a['Numeric']:
@@ -87,7 +88,8 @@ def DecisionTreeLearning(examples, attributes, parent_examples, goalValues):
         # change the attributes' values to our new discrete type
         a['Values'] = [">" + str(a['Numeric']), "<" + str(a['Numeric'])]
     
-    tree = { } # must have root test A
+    # create a tree with root test for attribute a
+    tree = { }
     tree['Attribute'] = a['Name']
     tree['Values'] = []
     
@@ -101,7 +103,7 @@ def DecisionTreeLearning(examples, attributes, parent_examples, goalValues):
     
     return tree
 
-# returns most common output value among a set of examples
+# returns most common goal value among a set of examples
 def PluralityValue(examples):
     values = { }
     for ex in examples:
