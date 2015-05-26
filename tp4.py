@@ -76,30 +76,33 @@ def DecisionTreeLearning(examples, attributes, parent_examples, goalValues):
         info_gain = Importance(at, examples)
         if info_gain > max_info_gain:
             (max_info_gain, a) = (info_gain, at)
-        
-    # turns out the best attribute is a numeric one, let's update the examples and attribute values
-    if 'Numeric' in a:
-        for e in examples:
-            if float(e[a['Index']]) > a['Numeric']:
-                e[a['Index']] = ">" + str(a['Numeric'])
-            else:
-                e[a['Index']] = "<" + str(a['Numeric'])
 
-        # change the attributes' values to our new discrete type
-        a['Values'] = [">" + str(a['Numeric']), "<" + str(a['Numeric'])]
-    
     # create a tree with root test for attribute a
     tree = { }
     tree['Attribute'] = a['Name']
     tree['Values'] = []
     
-    # for potential values of our attribute
-    for v in a['Values']:
-        examples_for_value = [e for e in examples if e[a['Index']] == v]
-        # equivalent to attributes - a
-        other_attributes = [attr for attr in attributes if attr['Name'] != a['Name']]
-        subtree = DecisionTreeLearning(examples_for_value, other_attributes, examples, goalValues)
-        tree['Values'].append((v, subtree)) # adds branch to tree with label(a = v)
+    # attribute is numeric, requires special handling
+    # we pass the same set of attributes to the subtree in case we need several splits on the same attribute
+    if 'Numeric' in a:
+        splitValue = a['Numeric']
+        # handle examples where attribute > splitValue
+        examples_for_value = [e for e in examples if float(e[a['Index']]) > splitValue]
+        subtree = DecisionTreeLearning(examples_for_value, attributes, examples, goalValues)
+        tree['Values'].append((">" + str(splitValue), subtree)) # adds branch to tree with label(a > v)
+        # handle examples where attribute <= splitValue
+        examples_for_value = [e for e in examples if float(e[a['Index']]) <= splitValue]
+        subtree = DecisionTreeLearning(examples_for_value, attributes, examples, goalValues)
+        tree['Values'].append(("<=" + str(splitValue), subtree)) # adds branch to tree with label(a <= v)
+    else: # attribute is not numeric, handle each discrete value
+        # for potential values of our attribute
+        for v in a['Values']:
+            examples_for_value = [e for e in examples if e[a['Index']] == v]
+
+            # equivalent to attributes - a
+            other_attributes = [attr for attr in attributes if attr['Name'] != a['Name']]
+            subtree = DecisionTreeLearning(examples_for_value, other_attributes, examples, goalValues)
+            tree['Values'].append((v, subtree)) # adds branch to tree with label(a = v)
     
     return tree
 
