@@ -5,16 +5,25 @@ import sys # for argument fetching
 import StringIO # some function needs a file but you only have a string? this is for you
 from sets import Set
 import copy # for deep copy
+from optparse import OptionParser # argument parsing
+import re # regex search
 
 def main():
+    usage = "usage: python tp4.py $csvfile [options]"
+    parser = OptionParser(usage=usage)
+    parser.add_option("-t", "--tree_file", dest="tree_file",
+                      help="test previously generated tree against test data", metavar="TREE_FILE")
+
+    (options, args) = parser.parse_args()
+    # options.tree_file
+    
     # need to take in a csv file, let's see if it's given to us
-    if len(sys.argv) < 2:
-        print "Missing file arg"
-        print "Usage: python tp4.py $csvfile"
+    if len(args) < 1:
+        parser.print_help()
         sys.exit(1)
 
-    fileStr = sys.argv[1]
-    with open(fileStr, 'rb') as csvfile: # file exists, let's parse it
+    file = args[0]
+    with open(file, 'rb') as csvfile: # file exists, let's parse it
         firstLine = csvfile.readline() # skip first line
         # some of the csv files have empty lines/comment lines that start with %
         # skip those
@@ -54,12 +63,16 @@ def main():
             attribute['Values'] = GetValuesForFieldIndex(i, examples)
             attributes.append(attribute)
 
-        # let's do some magic and construct the decision tree
-        tree = DecisionTreeLearning(examples, attributes, [], goalValues)
-        
-        # woah, magic
-        # let's print the tree
-        PrintTree(tree)
+        # let's read the tree and test it
+        if options.tree_file:
+            TestTreeForExamples(options.tree_file, examples, attributes)
+        else: # build the tree
+            # let's do some magic and construct the decision tree
+            tree = DecisionTreeLearning(examples, attributes, [], goalValues)
+            
+            # woah, magic
+            # let's print the tree
+            PrintTree(tree)
     
 def DecisionTreeLearning(examples, attributes, parent_examples, goalValues):
     if len(examples) == 0:
@@ -208,6 +221,86 @@ def PrintTree(tree, depth=0):
         else:
             print "  " * depth + "  " + vk + ":"
             PrintTree(subtree, depth + 2)
+
+def TestTreeForExamples(tree_file, examples, attributes):
+    with open(tree_file, 'rb') as f:
+        text = f.read().splitlines()
+        tree = ReadTree(text)
+        
+        match = 0
+        for i in range(len(examples)):
+            e = examples[i]
+            c = TreeDecisionForExample(tree, e, attributes)
+            print "Example " + str(i) + ": " + str(c)
+            
+            if e[-1] == c:
+                match += 1
+                
+        print "Correct results: " + str(match) + " out of " + str(len(examples))
+
+def ReadTree(text, depth=1):
+    attr_text = text.pop(0)
+    m = re.match(r"\s*<(\w+)>", attr_text) # "<Attribute>"
+    attr = m.group(1)
+    
+    # initialize the tree
+    tree = { }
+    tree['Attribute'] = attr
+    tree['Values'] = []
+    
+    # get the values for this attribute
+    while len(text) > 0:
+        val_text = text.pop(0)
+        m = re.match(r"\s*(.+)\:\s(.+)\s.*", val_text) # "Value: Class (Number)"
+        if m: # is a child node
+            val = m.group(1) # value
+            c = m.group(2) # class
+                
+            tree['Values'].append((val, c)) # child node with class c
+            
+        else:
+            m = re.match(r"\s*(.+)\:", val_text) # "Value:"
+            val = m.group(1) # value
+            subtree_text = []
+            while len(text) > 0 and text[0].startswith("  " * (depth * 2)):
+                subtree_text.append(text.pop(0))
+
+            subtree = ReadTree(subtree_text, depth + 1)
+            tree['Values'].append((val, subtree)) # child node with subtree
+
+    return tree
+
+def TreeDecisionForExample(tree, example, attributes):
+    if type(tree) is str: # child node case
+        return tree
+    
+    attr = tree['Attribute']
+    
+    for a in attributes:
+        if a['Name'] == attr:
+            idx = a['Index']
+            v = example[idx]
+            for (vk, subtree) in tree['Values']:
+                if v == vk: # handle discrete attributes
+                    return TreeDecisionForExample(subtree, example, attributes)
+                else: # handle numeric attributes
+                    try:
+                        v = float(v)
+                        if vk.startswith(">"):
+                            vk = float(vk[1:])
+                            if v > vk:
+                                return TreeDecisionForExample(subtree, example, attributes)
+                        elif vk.startswith("<="):
+                            vk = float(vk[2:])
+                            if v <= vk:
+                                return TreeDecisionForExample(subtree, example, attributes)
+
+                    except ValueError:
+                        pass # just ignore, not a numeric attribute
+                    
+            assert "TreeDecisionForExample: invalid tree, did not find value " + example[idx] + " in attribute " + attr
+
+    assert "TreeDecisionForExample: invalid tree, did not find attribute " + attr
 
 if __name__ == "__main__":
     main()
