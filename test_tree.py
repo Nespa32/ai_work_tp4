@@ -8,6 +8,7 @@ def main():
     if len(sys.argv) < 3:
         print "Missing file arg"
         print "Usage: python test_tree.py $csvfile $treefile"
+        return
 
     csv_f = sys.argv[1]
     tree_f = sys.argv[2]
@@ -19,9 +20,9 @@ def main():
             firstLine = csvfile.readline()
 
         rest = firstLine + csvfile.read() # read the rest of the file
-        rest.replace(",", " ") # replace commas by spaces, so that all expected csv files can be read the same way
+        rest = rest.replace(",", " ") # replace commas by spaces, so that all expected csv files can be read the same way
         
-        reader = csv.DictReader(StringIO.StringIO(rest), skipinitialspace=True)
+        reader = csv.DictReader(StringIO.StringIO(rest), delimiter=' ', skipinitialspace=True)
         
         examples = [row for row in reader]
         
